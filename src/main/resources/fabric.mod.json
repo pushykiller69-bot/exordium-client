@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "crystaloptimizer",
+  "version": "${version}",
+  "name": "Exordium Client",
+  "description": "Fake spawner visuals, fake scoreboard, fake pay, name spoofer and more.",
+  "authors": [
+    "adminlafemei"
+  ],
+  "contact": {
+    "discord": "@adminlafemei"
+  },
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "main": [
+      "com.bred.crystaloptimizer.CrystalOptimizer"
+    ],
+    "client": [
+      "com.bred.crystaloptimizer.CrystalOptimizerClient"
+    ]
+  },
+  "mixins": [
+    "entityculling.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.9",
+    "fabric-api": "*",
+    "minecraft": "~1.21.1"
+  },
+  "icon": "icon.png"
+}

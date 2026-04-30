@@ -1,0 +1,119 @@
+plugins {
+	id 'fabric-loom' version '1.7-SNAPSHOT'
+	id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+	archivesName = project.archives_base_name
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+}
+
+processResources {
+	inputs.property "version", project.version
+	filteringCharset "UTF-8"
+
+	filesMatching("fabric.mod.json") {
+		expand "version": project.version
+	}
+}
+
+def targetJavaVersion = 21
+tasks.withType(JavaCompile).configureEach {
+	it.options.encoding = "UTF-8"
+	if (targetJavaVersion >= 10 || JavaVersion.current().isJava10Compatible()) {
+		it.options.release = targetJavaVersion
+	}
+}
+
+java {
+	def javaVersion = JavaVersion.toVersion(targetJavaVersion)
+	if (JavaVersion.current() < javaVersion) {
+		toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
+	}
+	sourceCompatibility = javaVersion
+	targetCompatibility = javaVersion
+}
+
+jar {
+	from("LICENSE") {
+		rename { "${it}_${project.archivesBaseName}" }
+	}
+}
+
+// ── ProGuard obfuscation ───────────────────────────────────────────────────
+// Obfuscation is done MANUALLY after build. See obfuscate.gradle for config.
+// Run: gradlew -b obfuscate.gradle obfuscateJar
+
+// ── Sources JAR (unobfuscated) ─────────────────────────────────────────────
+task srcJar(type: Jar) {
+	archiveClassifier = 'sources'
+	from sourceSets.main.allSource
+	destinationDirectory = file("${buildDir}/libs")
+}
+
+// ── Versioned release packaging ────────────────────────────────────────────
+// After each build, creates:
+//   releases/v1.0.0/
+//     exordium-client-1.0.0.jar          (remapped, ready to use)
+//     exordium-client-1.0.0-obf.jar      (obfuscated, for distribution)
+//     exordium-client-1.0.0-src.zip      (full source, uncompiled)
+task packageRelease(dependsOn: [remapJar, srcJar]) {
+	doLast {
+		def ver     = project.mod_version
+		def relDir  = file("${rootDir}/releases/v${ver}")
+		relDir.mkdirs()
+
+		// Copy remapped JAR
+		def remapped = remapJar.archiveFile.get().asFile
+		def destJar  = new File(relDir, "exordium-client-${ver}.jar")
+		if (remapped.exists()) {
+			copy { from remapped; into relDir; rename { "exordium-client-${ver}.jar" } }
+			println "📦 JAR:    ${destJar}"
+		}
+
+		// The main JAR already contains manually obfuscated code
+		// Copy it as -obf.jar for clarity
+		if (remapped.exists()) {
+			copy { from remapped; into relDir; rename { "exordium-client-${ver}-obf.jar" } }
+			println "🔒 OBF:    ${new File(relDir, "exordium-client-${ver}-obf.jar")} (manually obfuscated)"
+		}
+
+		// Create source ZIP (all .java files + resources, no compiled classes)
+		def srcZip = new File(relDir, "exordium-client-${ver}-src.zip")
+		ant.zip(destfile: srcZip.absolutePath) {
+			fileset(dir: "${projectDir}/src") {
+				include(name: "**/*.java")
+				include(name: "**/*.json")
+				include(name: "**/*.properties")
+				include(name: "**/*.png")
+				include(name: "**/*.txt")
+			}
+			fileset(dir: projectDir) {
+				include(name: "build.gradle")
+				include(name: "gradle.properties")
+				include(name: "settings.gradle")
+			}
+		}
+		println "📁 SRC:    ${srcZip}"
+		println "✅ Release v${ver} packaged → ${relDir}"
+		println "ℹ️  Note: Both JAR files contain manually obfuscated code (SupabaseClient, HwidUtil)"
+	}
+}
+
+build.finalizedBy packageRelease
+remapJar.finalizedBy srcJar
+// Manual obfuscation is applied in source code (SupabaseClient.java, HwidUtil.java)
+// Both .jar and -obf.jar contain the same manually obfuscated code

@@ -1,0 +1,31 @@
+{
+  "required": false,
+  "package": "com.bred.crystaloptimizer.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "ItemTooltipMixin",
+    "ItemNameMixin",
+    "ItemModelMixin",
+    "ChatHudMixin",
+    "ClientPlayerInteractionManagerMixin",
+    "ItemEntityMixin",
+    "ChatCommandMixin",
+    "HudRenderMixin",
+    "LeverMixin",
+    "MouseMixin",
+    "ScoreboardMixin",
+    "AnvilScreenMixin",
+    "MobEntityMixin",
+    "PlayerNameMixin",
+    "PlayerGameProfileMixin",
+    "PlayerListEntryMixin",
+    "PlayerListHudMixin",
+    "TextRendererMixin",
+    "TextVisitFactoryMixin",
+    "BlockPlaceMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  },
+  "refmap": "breds-crystal-optimizer-refmap.json"
+}
