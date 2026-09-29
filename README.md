@@ -2,7 +2,7 @@
 
 A Fabric client-side mod for Minecraft 1.21.1 with quality of life features for SMP servers.
 
-> Made by **@adminlafemei** on Discord
+> Made by **@.freethan** on Discord
 
 ---
 
