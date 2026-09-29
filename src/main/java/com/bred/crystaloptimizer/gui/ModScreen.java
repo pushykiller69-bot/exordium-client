@@ -6,11 +6,16 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
+import net.minecraft.client.gui.widget.TextWidget;
 import net.minecraft.text.Text;
+
+import java.util.function.Consumer;
 
 public class ModScreen extends Screen {
 
-    private static final int W = 480, H = 270, SIDEBAR_W = 82, HEADER_H = 24, ACCENT_H = 2;
+    private static final int W = 480, H = 270, SIDEBAR_W = 100, HEADER_H = 24, ACCENT_H = 2;
+    private static final int PADDING = 8, ELEMENT_HEIGHT = 14, SPACING = 18;
+
     private static final int C_BG = 0xF0101318, C_SIDEBAR = 0xF0181C22, C_HEADER = 0xF0141820;
     private static final int C_ACCENT = 0xFF00E5FF, C_ACCENT2 = 0xFF00FFF0, C_BORDER = 0xFF1E2530;
     private static final int C_TEXT = 0xFFCCCCCC, C_TEXT_DIM = 0xFF666C77;
@@ -19,18 +24,17 @@ public class ModScreen extends Screen {
     private static final int C_MOD_HL = 0xFF1A2233, C_ORANGE = 0xFFFF8800, C_V2 = 0xFF88AAFF;
 
     private static final String WATERMARK = "@adminlafemei on dis";
-
-    private static final String[] TAB_LABELS = {"Spawners", "Fake Pay", "Misc"};
-    private static final String[] TAB_ICONS  = {"[S]", "[$]", "[M]"};
+    private static final String[] TAB_LABELS = {"Spawners", "Fake Pay", "Scoreboard", "Misc"};
+    private static final String[] TAB_ICONS  = {"[S]", "[$]", "[#]", "[M]"};
 
     private int activeTab = 0, px, py;
     private boolean closing = false;
 
-    private TextFieldWidget blockIdField, fakeNameField;
-    private TextFieldWidget recipientField, amountField;
+    private TextFieldWidget blockIdField, fakeNameField, scanRangeField;
+    private TextFieldWidget recipientField, amountField, fakePayKeyField;
     private TextFieldWidget sbTitleField, sbMoneyField, sbShardsField, sbKillsField;
-    private TextFieldWidget sbDeathsField, sbPlaytimeField, sbTeamField, sbFooterField;
-    private TextFieldWidget nameSpooferField, fakePayKeyField, sbKeyField;
+    private TextFieldWidget sbDeathsField, sbPlaytimeField, sbTeamField, sbFooterField, sbKeyField;
+    private TextFieldWidget nameSpooferField;
 
     public ModScreen() { super(Text.literal("Exordium Client")); }
 
@@ -41,7 +45,11 @@ public class ModScreen extends Screen {
         rebuild();
     }
 
-    private void rebuild() { this.clearChildren(); buildSidebar(); buildContent(); }
+    private void rebuild() {
+        this.clearChildren();
+        buildSidebar();
+        buildContent();
+    }
 
     private void buildSidebar() {
         int tabH = 36;
@@ -58,15 +66,16 @@ public class ModScreen extends Screen {
         switch (activeTab) {
             case 0 -> buildSpawnersTab();
             case 1 -> buildFakePayTab();
+            case 2 -> buildScoreboardTab();
             default -> buildMiscTab();
         }
     }
 
-    private int cx() { return px + SIDEBAR_W + 8; }
-    private int cw() { return W - SIDEBAR_W - 16; }
+    private int cx() { return px + SIDEBAR_W + PADDING; }
+    private int cw() { return W - SIDEBAR_W - (PADDING * 2); }
 
     private TextFieldWidget field(int x, int y, int w, int maxLen, String val, String ph) {
-        TextFieldWidget f = new TextFieldWidget(this.textRenderer, x, y, w, 13, Text.empty());
+        TextFieldWidget f = new TextFieldWidget(this.textRenderer, x, y, w, ELEMENT_HEIGHT - 1, Text.empty());
         f.setMaxLength(maxLen);
         f.setText(val != null ? val : "");
         f.setPlaceholder(Text.literal(ph).styled(s -> s.withColor(C_TEXT_DIM)));
@@ -76,15 +85,14 @@ public class ModScreen extends Screen {
 
     private void label(int x, int y, String text) {
         int maxW = (px + W) - x - 4;
-        this.addDrawableChild(new net.minecraft.client.gui.widget.TextWidget(
+        this.addDrawableChild(new TextWidget(
             x, y, Math.max(10, maxW), 8,
             Text.literal(text).styled(s -> s.withColor(C_TEXT_DIM)), this.textRenderer));
     }
 
-    private void toggle(int x, int y, int w, String lbl, boolean val,
-                        java.util.function.Consumer<ButtonWidget> fn) {
+    private void toggle(int x, int y, int w, String lbl, boolean val, Consumer<ButtonWidget> fn) {
         this.addDrawableChild(ButtonWidget.builder(toggleTxt(lbl, val), fn::accept)
-            .dimensions(x, y, w, 14).build());
+            .dimensions(x, y, w, ELEMENT_HEIGHT).build());
     }
 
     private Text toggleTxt(String lbl, boolean on) {
@@ -96,92 +104,142 @@ public class ModScreen extends Screen {
         this.addDrawableChild(ButtonWidget.builder(
             Text.literal("Save & Close").styled(s -> s.withColor(C_ACCENT)),
             btn -> saveAndClose()
-        ).dimensions(px + W / 2 - 44, py + H - 20, 88, 14).build());
+        ).dimensions(px + SIDEBAR_W + (cw() / 2) - 44, py + H - 20, 88, ELEMENT_HEIGHT).build());
     }
 
     private void buildSpawnersTab() {
         int x = cx(), w = cw(), half = w / 2 - 3;
-        int y = py + HEADER_H + ACCENT_H + 10;
-        blockIdField = field(x, y, w, 200, ModConfig.configuredBlockId, "Block ID  e.g. minecraft:ice");
-        y += 18;
-        label(x, y, "Show tooltips on spawner items"); y += 9;
+        int y = py + HEADER_H + ACCENT_H + PADDING;
+
+        label(x, y, "Block to replace visually"); y += 9;
+        blockIdField = field(x, y, w - 60, 200, ModConfig.configuredBlockId, "e.g. minecraft:ice");
+        label(x + w - 55, y + 2, "Range");
+        scanRangeField = field(x + w - 25, y, 25, 2, String.valueOf(ModConfig.scanRange), "10");
+        y += SPACING;
+
+        label(x, y, "Visual Settings"); y += 9;
         toggle(x, y, half, "Tooltips", ModConfig.showTooltips, btn -> {
             ModConfig.showTooltips = !ModConfig.showTooltips; btn.setMessage(toggleTxt("Tooltips", ModConfig.showTooltips)); });
-        toggle(x+half+6, y, half, "Custom Name", ModConfig.showCustomName, btn -> {
+        toggle(x + half + 6, y, half, "Custom Name", ModConfig.showCustomName, btn -> {
             ModConfig.showCustomName = !ModConfig.showCustomName; btn.setMessage(toggleTxt("Custom Name", ModConfig.showCustomName)); });
-        y += 18;
-        toggle(x, y, half, "Show Placed", ModConfig.showWhenPlacedByOthers, btn -> {
-            ModConfig.showWhenPlacedByOthers = !ModConfig.showWhenPlacedByOthers; btn.setMessage(toggleTxt("Show Placed", ModConfig.showWhenPlacedByOthers)); });
-        toggle(x+half+6, y, half, "Panic Mode", ModConfig.panicMode, btn -> {
+        y += SPACING;
+
+        toggle(x, y, half, "Show Others", ModConfig.showWhenPlacedByOthers, btn -> {
+            ModConfig.showWhenPlacedByOthers = !ModConfig.showWhenPlacedByOthers; btn.setMessage(toggleTxt("Show Others", ModConfig.showWhenPlacedByOthers)); });
+        toggle(x + half + 6, y, half, "Panic Mode", ModConfig.panicMode, btn -> {
             ModConfig.panicMode = !ModConfig.panicMode; btn.setMessage(toggleTxt("Panic Mode", ModConfig.panicMode)); });
-        y += 18;
-        label(x, y, "Fake mob type shown in tooltip"); y += 9;
-        toggle(x, y, half, "Fake Name", ModConfig.fakeNameEnabled, btn -> {
-            ModConfig.fakeNameEnabled = !ModConfig.fakeNameEnabled; btn.setMessage(toggleTxt("Fake Name", ModConfig.fakeNameEnabled)); });
-        fakeNameField = field(x+half+6, y, half, 50, ModConfig.fakeMobName, "e.g. Zombie");
-        y += 18;
-        label(x, y, "Visually replace the block with a spawner model"); y += 9;
+        y += SPACING;
+
+        label(x, y, "Fake Mob Tooltip Name"); y += 9;
+        toggle(x, y, half, "Enabled", ModConfig.fakeNameEnabled, btn -> {
+            ModConfig.fakeNameEnabled = !ModConfig.fakeNameEnabled; btn.setMessage(toggleTxt("Enabled", ModConfig.fakeNameEnabled)); });
+        fakeNameField = field(x + half + 6, y, half, 50, ModConfig.fakeMobName, "e.g. Zombie");
+        y += SPACING;
+
+        label(x, y, "Replacement Logic"); y += 9;
         toggle(x, y, half, "Block->Spawner", ModConfig.showPlacedAsSpawner, btn -> {
             ModConfig.showPlacedAsSpawner = !ModConfig.showPlacedAsSpawner; btn.setMessage(toggleTxt("Block->Spawner", ModConfig.showPlacedAsSpawner)); });
+
         saveBtn();
     }
 
     private void buildFakePayTab() {
         int x = cx(), w = cw(), half = w / 2 - 3;
-        int y = py + HEADER_H + ACCENT_H + 6;
-        int toggleW = half - 40, keyW = 36;
-        int restX = x + toggleW + keyW + 10, halfRest = (w - toggleW - keyW - 14) / 2 - 2;
+        int y = py + HEADER_H + ACCENT_H + PADDING;
 
-        toggle(x, y, toggleW, "Intercept /pay", ModConfig.fakePayEnabled, btn -> {
-            ModConfig.fakePayEnabled = !ModConfig.fakePayEnabled; ModConfig.save(); btn.setMessage(toggleTxt("Intercept /pay", ModConfig.fakePayEnabled)); });
-        fakePayKeyField = field(x+toggleW+4, y, keyW, 20, ModConfig.fakePayToggleKey.equals("NONE") ? "" : ModConfig.fakePayToggleKey, "NONE");
-        recipientField = field(restX, y, halfRest, 64, ModConfig.fakePayRecipient, "Recipient e.g. Steve");
-        amountField = field(restX+halfRest+2, y, halfRest, 20, ModConfig.fakePayAmount, "Amount e.g. 500k");
-        y += 16;
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("Send Fake Pay").styled(s -> s.withColor(C_OK)), btn -> sendFakePay())
-            .dimensions(x, y, w, 13).build());
-        y += 22;
+        label(x, y, "Intercept /pay command"); y += 9;
+        int keyW = 40;
+        toggle(x, y, w - keyW - 4, "Fake Pay Intercept", ModConfig.fakePayEnabled, btn -> {
+            ModConfig.fakePayEnabled = !ModConfig.fakePayEnabled; btn.setMessage(toggleTxt("Fake Pay Intercept", ModConfig.fakePayEnabled)); });
+        fakePayKeyField = field(x + w - keyW, y, keyW, 20, ModConfig.fakePayToggleKey.equals("NONE") ? "" : ModConfig.fakePayToggleKey, "NONE");
+        y += SPACING;
 
-        toggle(x, y, toggleW, "Fake Scoreboard", ModConfig.fakeScoreboardActive, btn -> {
-            ModConfig.fakeScoreboardActive = !ModConfig.fakeScoreboardActive; ModConfig.save(); btn.setMessage(toggleTxt("Fake Scoreboard", ModConfig.fakeScoreboardActive)); });
-        sbKeyField = field(x+toggleW+4, y, keyW, 20, ModConfig.sbToggleKey.equals("NONE") ? "" : ModConfig.sbToggleKey, "NONE");
-        sbTitleField = field(restX, y, halfRest, 32, ModConfig.fakeScoreboardTitle, "Title e.g. Donut SMP");
-        sbMoneyField = field(restX+halfRest+2, y, halfRest, 20, ModConfig.fakeScoreboardMoney, "Money e.g. 1.5M");
-        y += 16;
+        label(x, y, "Recipient & Amount"); y += 9;
+        recipientField = field(x, y, half, 64, ModConfig.fakePayRecipient, "Steve");
+        amountField = field(x + half + 6, y, half, 20, ModConfig.fakePayAmount, "500k");
+        y += SPACING;
+
+        this.addDrawableChild(ButtonWidget.builder(Text.literal("Send Manual Fake Pay").styled(s -> s.withColor(C_OK)), btn -> sendFakePay())
+            .dimensions(x, y, w, ELEMENT_HEIGHT).build());
+
+        y += SPACING + 10;
+        label(x, y, "Info: Fake Pay deducts from your Fake Scoreboard balance.");
+        y += 10;
+        label(x, y, "Supports suffixes: K (kilo), M (million), B (billion), T (trillion)");
+
+        saveBtn();
+    }
+
+    private void buildScoreboardTab() {
+        int x = cx(), w = cw(), half = w / 2 - 3;
+        int y = py + HEADER_H + ACCENT_H + PADDING;
+
+        label(x, y, "Scoreboard Status & Toggle Key"); y += 9;
+        int keyW = 40;
+        toggle(x, y, w - keyW - 4, "Fake Scoreboard", ModConfig.fakeScoreboardActive, btn -> {
+            ModConfig.fakeScoreboardActive = !ModConfig.fakeScoreboardActive; btn.setMessage(toggleTxt("Fake Scoreboard", ModConfig.fakeScoreboardActive)); });
+        sbKeyField = field(x + w - keyW, y, keyW, 20, ModConfig.sbToggleKey.equals("NONE") ? "" : ModConfig.sbToggleKey, "NONE");
+        y += SPACING;
+
+        label(x, y, "Main Display"); y += 9;
+        sbTitleField = field(x, y, half, 32, ModConfig.fakeScoreboardTitle, "Title: Donut SMP");
+        sbMoneyField = field(x + half + 6, y, half, 20, ModConfig.fakeScoreboardMoney, "Money: 1.5M");
+        y += SPACING;
+
+        label(x, y, "Values"); y += 9;
         int q = (w - 4) / 3;
-        sbShardsField = field(x, y, q, 20, ModConfig.fakeScoreboardShards, "Shards e.g. 320");
-        sbKillsField  = field(x+q+2, y, q, 20, ModConfig.fakeScoreboardKills, "Kills e.g. 47");
-        sbDeathsField = field(x+q*2+4, y, q, 20, ModConfig.fakeScoreboardDeaths, "Deaths e.g. 12");
-        y += 16;
-        sbPlaytimeField = field(x, y, q, 20, ModConfig.fakeScoreboardPlaytime, "Playtime e.g. 6h 7m");
-        sbTeamField     = field(x+q+2, y, q, 32, ModConfig.fakeScoreboardTeam, "Team e.g. RedTeam");
-        sbFooterField   = field(x+q*2+4, y, q, 64, ModConfig.fakeScoreboardFooter, "Footer: blank = auto region");
+        sbShardsField = field(x, y, q, 20, ModConfig.fakeScoreboardShards, "Shards");
+        sbKillsField  = field(x + q + 2, y, q, 20, ModConfig.fakeScoreboardKills, "Kills");
+        sbDeathsField = field(x + q * 2 + 4, y, q, 20, ModConfig.fakeScoreboardDeaths, "Deaths");
+        y += SPACING;
+
+        sbPlaytimeField = field(x, y, q, 20, ModConfig.fakeScoreboardPlaytime, "Playtime");
+        sbTeamField     = field(x + q + 2, y, q, 32, ModConfig.fakeScoreboardTeam, "Team");
+        sbFooterField   = field(x + q * 2 + 4, y, q, 64, ModConfig.fakeScoreboardFooter, "Region");
+        y += SPACING;
+
+        label(x, y, "Display Toggles (2-column grid)"); y += 9;
+        toggle(x, y, half, "Show Money", ModConfig.sbShowMoney, btn -> { ModConfig.sbShowMoney = !ModConfig.sbShowMoney; btn.setMessage(toggleTxt("Show Money", ModConfig.sbShowMoney)); });
+        toggle(x+half+6, y, half, "Show Shards", ModConfig.sbShowShards, btn -> { ModConfig.sbShowShards = !ModConfig.sbShowShards; btn.setMessage(toggleTxt("Show Shards", ModConfig.sbShowShards)); });
+        y += SPACING - 4;
+        toggle(x, y, half, "Show Kills", ModConfig.sbShowKills, btn -> { ModConfig.sbShowKills = !ModConfig.sbShowKills; btn.setMessage(toggleTxt("Show Kills", ModConfig.sbShowKills)); });
+        toggle(x+half+6, y, half, "Show Deaths", ModConfig.sbShowDeaths, btn -> { ModConfig.sbShowDeaths = !ModConfig.sbShowDeaths; btn.setMessage(toggleTxt("Show Deaths", ModConfig.sbShowDeaths)); });
+        y += SPACING - 4;
+        toggle(x, y, half, "Show Keyall", ModConfig.sbShowKeyall, btn -> { ModConfig.sbShowKeyall = !ModConfig.sbShowKeyall; btn.setMessage(toggleTxt("Show Keyall", ModConfig.sbShowKeyall)); });
+        toggle(x+half+6, y, half, "Show Playtime", ModConfig.sbShowPlaytime, btn -> { ModConfig.sbShowPlaytime = !ModConfig.sbShowPlaytime; btn.setMessage(toggleTxt("Show Playtime", ModConfig.sbShowPlaytime)); });
+        y += SPACING - 4;
+        toggle(x, y, half, "Show Team", ModConfig.sbShowTeam, btn -> { ModConfig.sbShowTeam = !ModConfig.sbShowTeam; btn.setMessage(toggleTxt("Show Team", ModConfig.sbShowTeam)); });
+        toggle(x+half+6, y, half, "Show Region", ModConfig.sbShowRegion, btn -> { ModConfig.sbShowRegion = !ModConfig.sbShowRegion; btn.setMessage(toggleTxt("Show Region", ModConfig.sbShowRegion)); });
+
         saveBtn();
     }
 
     private void buildMiscTab() {
         int x = cx(), w = cw();
-        int y = py + HEADER_H + ACCENT_H + 6;
-        label(x, y, "Replaces your name visually (client-side only)"); y += 9;
-        toggle(x, y, w, "Name Spoofer", ModConfig.nameSpooferEnabled, btn -> {
-            ModConfig.nameSpooferEnabled = !ModConfig.nameSpooferEnabled; ModConfig.save();
-            btn.setMessage(toggleTxt("Name Spoofer", ModConfig.nameSpooferEnabled)); rebuild(); });
-        y += 18;
-        label(x, y, "Spoofed name — only editable when Name Spoofer is ON"); y += 9;
+        int y = py + HEADER_H + ACCENT_H + PADDING;
+
+        label(x, y, "Name Spoofer (Client-side Only)"); y += 9;
+        toggle(x, y, w, "Enabled", ModConfig.nameSpooferEnabled, btn -> {
+            ModConfig.nameSpooferEnabled = !ModConfig.nameSpooferEnabled;
+            btn.setMessage(toggleTxt("Enabled", ModConfig.nameSpooferEnabled)); rebuild(); });
+        y += SPACING;
+
+        label(x, y, "Spoofed Name"); y += 9;
         nameSpooferField = field(x, y, w - 60, 16, ModConfig.spoofedName, "e.g. DrDonutt");
         nameSpooferField.setEditable(ModConfig.nameSpooferEnabled);
         if (ModConfig.nameSpooferEnabled) {
             this.addDrawableChild(ButtonWidget.builder(Text.literal("Apply").styled(s -> s.withColor(C_ACCENT)), btn -> {
-                ModConfig.spoofedName = nameSpooferField.getText().trim(); ModConfig.save();
+                ModConfig.spoofedName = nameSpooferField.getText().trim();
                 nameSpooferField.setEditable(false); rebuild();
-            }).dimensions(x + w - 56, y, 56, 13).build());
+            }).dimensions(x + w - 56, y, 56, ELEMENT_HEIGHT - 1).build());
         }
-        y += 20;
-        this.addDrawableChild(new net.minecraft.client.gui.widget.TextWidget(x, y, w, 9,
+        y += SPACING + 10;
+        this.addDrawableChild(new TextWidget(x, y, w, 9,
             Text.literal("! Server still sees your real name !").styled(s -> s.withColor(C_ERR)), this.textRenderer));
         y += 11;
-        this.addDrawableChild(new net.minecraft.client.gui.widget.TextWidget(x, y, w, 9,
-            Text.literal("Covers: nametag  |  chat  |  F5  |  tab list").styled(s -> s.withColor(C_TEXT_DIM)), this.textRenderer));
+        this.addDrawableChild(new TextWidget(x, y, w, 9,
+            Text.literal("Covers: nametag | chat | F5 | tab list").styled(s -> s.withColor(C_TEXT_DIM)), this.textRenderer));
+
         saveBtn();
     }
 
@@ -198,11 +256,19 @@ public class ModScreen extends Screen {
             case 0 -> {
                 if (blockIdField != null) ModConfig.setConfiguredBlockId(blockIdField.getText());
                 if (fakeNameField != null) ModConfig.fakeMobName = fakeNameField.getText().trim();
+                if (scanRangeField != null) {
+                    try {
+                        int r = Integer.parseInt(scanRangeField.getText().trim());
+                        if (r > 0 && r <= 64) ModConfig.scanRange = r;
+                    } catch (NumberFormatException ignored) {}
+                }
             }
             case 1 -> {
                 if (recipientField != null) ModConfig.fakePayRecipient = recipientField.getText().trim();
                 if (amountField != null) ModConfig.fakePayAmount = amountField.getText().trim();
                 if (fakePayKeyField != null) { String k = fakePayKeyField.getText().trim().toUpperCase(); ModConfig.fakePayToggleKey = k.isEmpty() ? "NONE" : k; }
+            }
+            case 2 -> {
                 if (sbKeyField != null) { String k = sbKeyField.getText().trim().toUpperCase(); ModConfig.sbToggleKey = k.isEmpty() ? "NONE" : k; }
                 if (sbTitleField != null) ModConfig.fakeScoreboardTitle = sbTitleField.getText().trim();
                 if (sbMoneyField != null) {
@@ -220,7 +286,7 @@ public class ModScreen extends Screen {
                 if (sbTeamField != null) ModConfig.fakeScoreboardTeam = sbTeamField.getText().trim();
                 if (sbFooterField != null) ModConfig.fakeScoreboardFooter = sbFooterField.getText().trim();
             }
-            case 2 -> { if (nameSpooferField != null) ModConfig.spoofedName = nameSpooferField.getText().trim(); }
+            case 3 -> { if (nameSpooferField != null) ModConfig.spoofedName = nameSpooferField.getText().trim(); }
         }
         ModConfig.save();
     }
@@ -250,8 +316,8 @@ public class ModScreen extends Screen {
         for (int i = 0; i < TAB_LABELS.length; i++) {
             int ty = py + HEADER_H + ACCENT_H + i * tabH;
             if (i == activeTab) {
-                ctx.fill(px, ty, px+2, ty+tabH-1, C_ACCENT);
-                ctx.fill(px+2, ty, px+SIDEBAR_W, ty+tabH-1, C_MOD_HL);
+                ctx.fill(px, ty, px + 2, ty + tabH - 1, C_ACCENT);
+                ctx.fill(px + 2, ty, px + SIDEBAR_W, ty + tabH - 1, C_MOD_HL);
             }
         }
 
@@ -271,7 +337,7 @@ public class ModScreen extends Screen {
             Text.literal(WATERMARK).styled(s -> s.withColor(0xFF4488FF)),
             px + W - 4 - this.textRenderer.getWidth(WATERMARK), py + H - 10, 0xFF4488FF, false);
 
-        if (activeTab == 2 && ModConfig.nameSpooferEnabled && ModConfig.spoofedName != null && !ModConfig.spoofedName.isEmpty()) {
+        if (activeTab == 3 && ModConfig.nameSpooferEnabled && ModConfig.spoofedName != null && !ModConfig.spoofedName.isEmpty()) {
             ctx.drawText(this.textRenderer, "Playing as: " + ModConfig.spoofedName, px + 4, py + H - 10, 0xFFFFCC44, false);
         }
 

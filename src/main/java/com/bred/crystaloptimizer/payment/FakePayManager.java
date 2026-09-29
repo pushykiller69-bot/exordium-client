@@ -14,7 +14,7 @@ import java.util.regex.Pattern;
 
 public final class FakePayManager {
 
-    public static final long MAX_AMOUNT = 1_000_000_000_000L;
+    public static final long MAX_AMOUNT = 1_000_000_000_000_000L; // Increased to 1 quadrillion
     private static final Pattern AMOUNT_PATTERN = Pattern.compile("^(\\d+(?:\\.\\d+)?)([KMBT]?)$");
 
     private FakePayManager() {}
@@ -23,7 +23,10 @@ public final class FakePayManager {
         if (!ModConfig.fakePayEnabled || ModConfig.panicMode) return false;
 
         String command = normalizeCommand(rawCommand);
-        if (!command.toLowerCase(Locale.ROOT).startsWith("pay ")) return false;
+        String lower = command.toLowerCase(Locale.ROOT);
+
+        // Handle common aliases
+        if (!lower.startsWith("pay ") && !lower.startsWith("transfer ") && !lower.startsWith("mpay ")) return false;
 
         cancelCommand.run();
 
@@ -41,7 +44,7 @@ public final class FakePayManager {
         }
 
         if (amount > MAX_AMOUNT) {
-            sendError("Fake pay max is 1T.");
+            sendError("Fake pay max exceeded.");
             return true;
         }
 
@@ -80,6 +83,9 @@ public final class FakePayManager {
             .replace(",", "")
             .replace("$", "")
             .toUpperCase(Locale.ROOT);
+
+        if (normalized.isEmpty()) return 0;
+
         Matcher matcher = AMOUNT_PATTERN.matcher(normalized);
         if (!matcher.matches()) return 0;
 
@@ -99,7 +105,8 @@ public final class FakePayManager {
         };
 
         double result = value * multiplier;
-        if (!Double.isFinite(result) || result > Long.MAX_VALUE) return 0;
+        if (!Double.isFinite(result) || result < 0) return 0;
+        if (result > (double) Long.MAX_VALUE) return Long.MAX_VALUE;
         return (long) result;
     }
 

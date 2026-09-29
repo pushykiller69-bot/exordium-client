@@ -4,6 +4,7 @@ import com.bred.crystaloptimizer.config.ModConfig;
 import com.bred.crystaloptimizer.gui.ModScreen;
 import com.bred.crystaloptimizer.render.FakeSpawnerItemUtil;
 import com.bred.crystaloptimizer.render.FakeSpawnerRenderer;
+import com.bred.crystaloptimizer.scoreboard.FakeScoreboardManager;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -11,6 +12,7 @@ import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.util.math.BlockPos;
@@ -23,8 +25,10 @@ public class CrystalOptimizerClient implements ClientModInitializer {
     public static KeyBinding openGuiKey;
     public static KeyBinding panicKey;
     public static KeyBinding fakePayKey;
+
     private static boolean customFakePayHeld;
     private static boolean customScoreboardHeld;
+    private static int scanTickCounter = 0;
 
     @Override
     public void onInitializeClient() {
@@ -33,16 +37,11 @@ public class CrystalOptimizerClient implements ClientModInitializer {
 
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> FakeSpawnerRenderer.onWorldUnload());
 
-        final boolean[] wasInWorld = {false};
-        ClientTickEvents.START_CLIENT_TICK.register(client -> {
-            boolean inWorld = client.world != null && client.player != null;
-            if (wasInWorld[0] && !inWorld) {
-                FakeSpawnerRenderer.onWorldUnload();
-                com.bred.crystaloptimizer.scoreboard.FakeScoreboardManager.reset();
-            }
-            wasInWorld[0] = inWorld;
-        });
+        registerKeybindings();
+        registerEvents();
+    }
 
+    private void registerKeybindings() {
         openGuiKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
             "key.crystaloptimizer.open_gui",
             InputUtil.Type.KEYSYM,
@@ -63,107 +62,125 @@ public class CrystalOptimizerClient implements ClientModInitializer {
             GLFW.GLFW_KEY_P,
             "category.crystaloptimizer"
         ));
+    }
+
+    private void registerEvents() {
+        final boolean[] wasInWorld = {false};
+
+        ClientTickEvents.START_CLIENT_TICK.register(client -> {
+            if (client.player == null || client.world == null) {
+                if (wasInWorld[0]) {
+                    FakeSpawnerRenderer.onWorldUnload();
+                    FakeScoreboardManager.reset();
+                    wasInWorld[0] = false;
+                }
+                return;
+            }
+            wasInWorld[0] = true;
+
+            handleSpawnerScanning(client);
+        });
+
+        ClientTickEvents.END_CLIENT_TICK.register(this::handleKeyInput);
 
         UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
-            if (!world.isClient) return net.minecraft.util.ActionResult.PASS;
-            if (ModConfig.panicMode) return net.minecraft.util.ActionResult.PASS;
-            if (player == null) return net.minecraft.util.ActionResult.PASS;
+            if (!world.isClient || ModConfig.panicMode || player == null) return net.minecraft.util.ActionResult.PASS;
 
             net.minecraft.item.ItemStack stack = player.getStackInHand(hand);
             if (stack == null || stack.isEmpty()) return net.minecraft.util.ActionResult.PASS;
 
             if (FakeSpawnerItemUtil.shouldRenderAsSpawner(stack)) {
-                BlockPos hitPos = hitResult.getBlockPos();
-                BlockPos placedPos = hitPos.offset(hitResult.getSide());
+                BlockPos placedPos = hitResult.getBlockPos().offset(hitResult.getSide());
                 FakeSpawnerRenderer.addTrackedPos(placedPos);
             }
             return net.minecraft.util.ActionResult.PASS;
         });
+    }
 
-        ClientTickEvents.START_CLIENT_TICK.register(client -> {
-            if (client.player == null || client.world == null) return;
-
-            if (ModConfig.panicMode) {
-                if (FakeSpawnerRenderer.hasFakes()) {
-                    FakeSpawnerRenderer.revertAll(client);
-                }
-                return;
+    private void handleSpawnerScanning(MinecraftClient client) {
+        if (ModConfig.panicMode || !ModConfig.showPlacedAsSpawner) {
+            if (FakeSpawnerRenderer.hasFakes()) {
+                FakeSpawnerRenderer.revertAll(client);
             }
+            return;
+        }
 
-            if (!ModConfig.showPlacedAsSpawner) {
-                if (FakeSpawnerRenderer.hasFakes()) {
-                    FakeSpawnerRenderer.revertAll(client);
-                }
-                return;
-            }
+        if (++scanTickCounter < 20) return;
+        scanTickCounter = 0;
 
-            BlockPos playerPos = client.player.getBlockPos();
-            int range = 10;
-            for (int dx = -range; dx <= range; dx++) {
-                for (int dy = -range; dy <= range; dy++) {
-                    for (int dz = -range; dz <= range; dz++) {
-                        BlockPos pos = playerPos.add(dx, dy, dz);
-                        BlockState state = client.world.getBlockState(pos);
+        BlockPos playerPos = client.player.getBlockPos();
+        int range = ModConfig.scanRange;
 
-                        if (state.isAir()) {
-                            if (FakeSpawnerRenderer.isFakeAt(pos)) {
-                                FakeSpawnerRenderer.removeFake(pos);
-                            }
-                            continue;
+        for (int dx = -range; dx <= range; dx++) {
+            for (int dy = -range; dy <= range; dy++) {
+                for (int dz = -range; dz <= range; dz++) {
+                    BlockPos pos = playerPos.add(dx, dy, dz);
+                    BlockState state = client.world.getBlockState(pos);
+
+                    if (state.isAir()) {
+                        if (FakeSpawnerRenderer.isFakeAt(pos)) {
+                            FakeSpawnerRenderer.removeFake(pos);
                         }
-
-                        if (!FakeSpawnerRenderer.isTracked(pos)) continue;
-                        if (state.getBlock() == Blocks.SPAWNER) continue;
-
-                        FakeSpawnerRenderer.applyFake(client, pos, state);
+                        continue;
                     }
+
+                    if (!FakeSpawnerRenderer.isTracked(pos)) continue;
+                    if (state.getBlock() == Blocks.SPAWNER) continue;
+
+                    FakeSpawnerRenderer.applyFake(client, pos, state);
                 }
             }
-        });
+        }
+    }
 
-        ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            while (openGuiKey.wasPressed()) {
-                if (client.currentScreen == null) {
-                    client.setScreen(new ModScreen());
-                }
+    private void handleKeyInput(MinecraftClient client) {
+        while (openGuiKey.wasPressed()) {
+            if (client.currentScreen == null) {
+                client.setScreen(new ModScreen());
             }
+        }
 
-            while (panicKey.wasPressed()) {
-                ModConfig.panicMode = !ModConfig.panicMode;
-                ModConfig.save();
-                if (ModConfig.panicMode && client.world != null) {
-                    FakeSpawnerRenderer.revertAll(client);
-                }
+        while (panicKey.wasPressed()) {
+            ModConfig.panicMode = !ModConfig.panicMode;
+            ModConfig.save();
+            if (ModConfig.panicMode && client.world != null) {
+                FakeSpawnerRenderer.revertAll(client);
             }
+        }
 
-            while (fakePayKey.wasPressed()) {
-                if (!hasConfiguredKey(ModConfig.fakePayToggleKey)) {
-                    ModConfig.fakePayEnabled = !ModConfig.fakePayEnabled;
-                    ModConfig.save();
-                }
-            }
-
-            boolean fakePayOverridePressed = isConfiguredKeyPressed(client, ModConfig.fakePayToggleKey);
-            if (fakePayOverridePressed && !customFakePayHeld) {
+        // Standard Keybinding
+        while (fakePayKey.wasPressed()) {
+            if (!hasConfiguredKey(ModConfig.fakePayToggleKey)) {
                 ModConfig.fakePayEnabled = !ModConfig.fakePayEnabled;
                 ModConfig.save();
             }
-            customFakePayHeld = fakePayOverridePressed;
+        }
 
-            boolean scoreboardOverridePressed = isConfiguredKeyPressed(client, ModConfig.sbToggleKey);
-            if (scoreboardOverridePressed && !customScoreboardHeld) {
-                ModConfig.fakeScoreboardActive = !ModConfig.fakeScoreboardActive;
-                ModConfig.save();
-            }
-            customScoreboardHeld = scoreboardOverridePressed;
-        });
+        // Custom Configured Keybindings
+        handleCustomKeybinds(client);
+    }
+
+    private void handleCustomKeybinds(MinecraftClient client) {
+        boolean fakePayOverridePressed = isConfiguredKeyPressed(client, ModConfig.fakePayToggleKey);
+        if (fakePayOverridePressed && !customFakePayHeld) {
+            ModConfig.fakePayEnabled = !ModConfig.fakePayEnabled;
+            ModConfig.save();
+        }
+        customFakePayHeld = fakePayOverridePressed;
+
+        boolean scoreboardOverridePressed = isConfiguredKeyPressed(client, ModConfig.sbToggleKey);
+        if (scoreboardOverridePressed && !customScoreboardHeld) {
+            ModConfig.fakeScoreboardActive = !ModConfig.fakeScoreboardActive;
+            ModConfig.save();
+        }
+        customScoreboardHeld = scoreboardOverridePressed;
     }
 
     private static boolean hasConfiguredKey(String configuredKey) {
         return parseConfiguredKeyCode(configuredKey) != InputUtil.UNKNOWN_KEY.getCode();
     }
 
-    private static boolean isConfiguredKeyPressed(net.minecraft.client.MinecraftClient client, String configuredKey) {
+    private static boolean isConfiguredKeyPressed(MinecraftClient client, String configuredKey) {
         int code = parseConfiguredKeyCode(configuredKey);
         if (code == InputUtil.UNKNOWN_KEY.getCode()) return false;
         return InputUtil.isKeyPressed(client.getWindow().getHandle(), code);

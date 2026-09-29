@@ -27,6 +27,7 @@ public class ModConfig {
     public static boolean showPlacedAsSpawner    = true;
     public static String  fakeMobName            = "";
     public static String  configuredBlockId      = "";
+    public static int     scanRange              = 10;
 
     public static boolean fakeScoreboardActive             = false;
     public static long    fakeScoreboardBalance            = 0;
@@ -71,6 +72,7 @@ public class ModConfig {
         boolean showPlacedAsSpawner = true;
         String fakeMobName = "";
         String configuredBlockId = "";
+        int scanRange = 10;
         boolean fakeScoreboardActive = false;
         long fakeScoreboardBalance = 0;
         boolean fakeScoreboardBalanceInitialized = false;
@@ -116,6 +118,7 @@ public class ModConfig {
             showPlacedAsSpawner = data.showPlacedAsSpawner;
             fakeMobName = data.fakeMobName != null ? data.fakeMobName : "";
             setConfiguredBlockId(data.configuredBlockId);
+            scanRange = data.scanRange > 0 ? data.scanRange : 10;
             fakeScoreboardActive = data.fakeScoreboardActive;
             fakeScoreboardBalance = data.fakeScoreboardBalance;
             fakeScoreboardBalanceInitialized = data.fakeScoreboardBalanceInitialized;
@@ -161,6 +164,7 @@ public class ModConfig {
         data.fakeMobName = fakeMobName;
         setConfiguredBlockId(configuredBlockId);
         data.configuredBlockId = configuredBlockId;
+        data.scanRange = scanRange;
         data.fakeScoreboardActive = fakeScoreboardActive;
         data.fakeScoreboardBalance = fakeScoreboardBalance;
         data.fakeScoreboardBalanceInitialized = fakeScoreboardBalanceInitialized;
@@ -202,7 +206,7 @@ public class ModConfig {
 
     public static boolean matchesConfiguredSpawnerBlock(String blockId) {
         Set<String> configuredIds = parseBlockIds(configuredBlockId);
-        if (configuredIds.isEmpty()) return true;
+        if (configuredIds.isEmpty()) return false;
         String normalizedBlockId = normalizeSingleBlockId(blockId);
         String pathOnly = pathOnly(normalizedBlockId);
         for (String configuredId : configuredIds) {
